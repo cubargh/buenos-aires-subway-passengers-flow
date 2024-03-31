@@ -53,39 +53,28 @@ def transform_data(**kwargs):
     # Transform the data
     df.columns = df.columns.str.replace(",", "").str.lower().str.replace(" ", "_")
     df["fecha"] = df["fecha"].str.extract(r",(.*)", expand=False)  # fix leading comma
-    # df["from"] = df["fecha"] + "T" + df["desde"]
-    # df["to"] = df["fecha"] + "T" + df["hasta"]
 
     # Return the transformed data
     df.to_parquet("./tmp/transformed_molinetes.parquet")
 
 
 def send_to_bucket(**kwargs):
-    import json
 
-    from google.cloud import storage
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
-    # Authenticate to GCP
-    service_account_info = json.load(open("./tmp/key.json"))
-    storage_client = storage.Client.from_service_account_info(service_account_info)
-    bucket = storage_client.bucket("caba_flow")
-    assert bucket.exists()
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./tmp/key.json"
 
     # Load the data
     data = pd.read_parquet("./tmp/transformed_molinetes.parquet")
-    data["fecha"] = pd.to_datetime(data["fecha"], format="%d/%m/%Y")
-    fechas = data["fecha"].unique()
+    data["mes"] = pd.to_datetime(data["fecha"], format="%d/%m/%Y").dt.month
 
-    # Send the data to the bucket
-    for fecha in fechas:
-        partitioned_data = data[data["fecha"] == fecha]
-        _fecha = fecha.strftime("%Y-%m-%d")
-        gcs_file_path = os.path.join("caba_flow", f"{_fecha}.parquet")
-        blob = bucket.blob(gcs_file_path)
-        blob.upload_from_string(
-            partitioned_data.to_parquet(), "application/octet-stream"
-        )
-        print(f"Uploaded {_fecha}.parquet to {gcs_file_path}")
+    # Write the data to bucket
+    table = pa.Table.from_pandas(data)
+    gcs = pa.fs.GcsFileSystem()
+    pq.write_to_dataset(
+        table, root_path="caba_flow/data", filesystem=gcs, partition_cols=["mes"], compression="snappy"
+    )
 
 
 # Define the DAG
