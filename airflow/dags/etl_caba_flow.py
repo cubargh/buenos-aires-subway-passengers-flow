@@ -66,11 +66,21 @@ def send_to_bucket(**kwargs):
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./tmp/key.json"
 
     # Load the data
-    data = pd.read_parquet("./tmp/transformed_molinetes.parquet")
-    data["mes"] = pd.to_datetime(data["fecha"], format="%d/%m/%Y").dt.month
+    df = pd.read_parquet("./tmp/transformed_molinetes.parquet")
+    df["fecha_desde"] = df["fecha"] + " " + df["desde"]
+    df["fecha_hasta"] = df["fecha"] + " " + df["hasta"]
+    df["mes"] = pd.to_datetime(df["fecha"], format="%d/%m/%Y").dt.month
+    df["fecha"] = pd.to_datetime(df["fecha"], format="%d/%m/%Y")
+    df["fecha_desde"] = pd.to_datetime(df["fecha_desde"], format="%d/%m/%Y %H:%M:%S")
+    df["fecha_hasta"] = pd.to_datetime(df["fecha_hasta"], format="%d/%m/%Y %H:%M:%S")
 
-    # Write the data to bucket
-    table = pa.Table.from_pandas(data)
+    # change precision of dates
+    df["fecha"] = df["fecha"].astype('datetime64[ms]')
+    df["fecha_desde"] = df["fecha_desde"].astype('datetime64[ms]')
+    df["fecha_hasta"] = df["fecha_hasta"].astype('datetime64[ms]')
+
+    # Write the df to bucket
+    table = pa.Table.from_pandas(df)
     gcs = pa.fs.GcsFileSystem()
     pq.write_to_dataset(
         table, root_path="caba_flow/data", filesystem=gcs, partition_cols=["mes"], compression="snappy"
