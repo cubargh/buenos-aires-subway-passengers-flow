@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: staging
+    database: zoomcamp-0
+    schema: caba_flow
+
+    tables:
+      - name: data
